@@ -1,0 +1,65 @@
+This project is a https://projectriff.io[riff] function that builds another function. You can hook it up to a webhook so that changes in the target source code trigger a rebuild and update the cluster. Once deployed the builder responds to any message coming into its input topic:
+
+```
+$ riff publish -i builds -d start
+```
+
+The stdout from the build goes to the output topic (so that's probably a mess), and you can monitor it using `kubectl logs` or `kail`.
+
+Pre-requisites:
+
+* A riff cluster (the instructions below assume that it is able to pull docker images from your `$DOCKER_HOST`, but other registry strategies would work)
+* A service account in the cluster, if the cluster is running RBAC
+* A GCP service account, if you want to interact with other GCP services (e.g. use the container registry)
+
+To create a GCP service account you can go into the https://console.cloud.google.com[console] and find the IAM -> Service Accounts section. Create a new one called "builder" and give it enough privileges to be able to access the Kubernets APIs and probably also access to GCS (storage).
+
+It's easy to create a new service account in the k8s cluster, but it won't be very much use until it has some permissions. To grant permissions you need to be an admin yourself, so escalate your own credentials first
+
+```
+kubectl --username=admin --password=$PASSWORD create clusterrolebinding dsyer-cluster-admin-binding --clusterrole=cluster-admin --user=dsyer@pivotal.io
+```
+
+(You can copy the password from the GKE dashboard if you go to the cluster details and click on the "Show credentials" link on the k8s endpoint.)
+
+Then apply some YAML that creates the service account and a role and binds them together (this example uses "builder" as the user name and the role name):
+
+```
+$ kubectl apply -f serviceaccount.yaml
+```
+
+To deploy the builder to riff:
+
+```
+$ docker build -t projectriff/builder:0.0.1 .
+$ riff apply -f builder.yaml
+```
+
+Then edit the deployment to add in the service account (I put the YAML in `builder.yaml` so you can copy it from there, but it is ignored by riff):
+
+```
+$ kubectl edit deployment builder
+...
+    spec:
+...
+      serviceAccountName: builder
+```
+
+and to use the local docker daemon to publish build images mount the docker socket as a volume:
+
+```
+...
+    spec:
+      containers:
+      - name: main
+        volumeMounts:
+        - mountPath: /var/run/docker.sock
+          name: docker-sock-volume
+...
+      volumes:
+      - hostPath:
+          path: /var/run/docker.sock
+          type: File
+        name: docker-sock-volume
+```
+

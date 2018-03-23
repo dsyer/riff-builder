@@ -1,0 +1,26 @@
+apiVersion: projectriff.io/v1
+kind: Function
+metadata:
+  name: builder
+spec:
+  protocol: grpc
+  input: builds
+  container:
+    image: projectriff/builder:0.0.1
+    volumeMounts:
+    - mountPath: /var/run/docker.sock
+      name: docker-sock-volume
+  idleTimeoutMs: 3600000
+  volumes:
+  - name: docker-sock-volume
+    hostPath:
+      path: /var/run/docker.sock
+      type: File
+  serviceAccountName: builder
+  serviceAccount: builder
+---
+
+apiVersion : projectriff.io/v1
+kind: Topic
+metadata:	
+  name: builds
